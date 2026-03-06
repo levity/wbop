@@ -1,0 +1,26 @@
+{
+  "name": "wbop-cli",
+  "version": "0.1.0",
+  "description": "Web Operator — a long-lived Playwright browser you control from any terminal",
+  "type": "module",
+  "bin": {
+    "wbop": "./wbop.js"
+  },
+  "files": [
+    "wbop.js",
+    "README.txt",
+    "LICENSE"
+  ],
+  "keywords": [
+    "playwright",
+    "browser",
+    "automation",
+    "cli",
+    "web"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.50.0"
+  }
+}
