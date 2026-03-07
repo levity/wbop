@@ -79,7 +79,9 @@ Selectors:
 
 Install:
 
-  npx wbop serve            # no install needed
-  npm install -g wbop       # or install globally
+  npx wbop-cli serve            # no install needed
+  npm install -g wbop-cli   # or install globally
 
   Playwright will install Chromium on first run if needed.
+
+v0.1.2

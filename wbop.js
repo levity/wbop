@@ -5,7 +5,7 @@ import { existsSync, unlinkSync, mkdirSync, readFileSync } from "fs";
 import { createServer, connect } from "net";
 import { fileURLToPath } from "url";
 
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 const PKG_DIR = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 
