@@ -1,7 +1,7 @@
 wbop (web operator): control a long-lived browser from the CLI.
 
 Usage:
-  wbop serve               Start the browser (runs until killed)
+  wbop serve [WxH]         Start the browser (runs until killed)
   wbop <command> [args]    Send a command to the running browser
   wbop --help              Show this help
   wbop --help-all          Show extended help with examples
@@ -30,14 +30,16 @@ Configuration (environment variables):
   WBOP_BROWSER_DATA   Persistent profile    (default: ~/.wbop/data)
   WBOP_DOWNLOADS      Downloads directory   (default: ~/.wbop/downloads)
   WBOP_SCREENSHOTS    Screenshots directory (default: ~/.wbop/screenshots)
-  WBOP_VIEWPORT       Viewport WxH          (default: 1280x900)
 
 ---
 
 How it works:
 
   `wbop serve` launches a headed Chromium browser with a persistent profile
-  and listens on a Unix socket (/tmp/wbop.sock by default). Every other
+  and listens on a Unix socket (/tmp/wbop.sock by default). It uses the
+  native browser window size for page layout (`viewport: null`) and sets
+  the initial window size explicitly. Pass a size like `wbop serve 1440x900`,
+  or omit it to auto-pick about 95% of the current screen size. Every other
   invocation connects to that socket, sends one command, prints the JSON
   response, and exits.
 
@@ -48,6 +50,7 @@ Quick start:
 
   Terminal 1 — start the browser:
     wbop serve
+    wbop serve 1440x900
 
   Terminal 2 — send commands:
     wbop goto https://example.com
@@ -84,4 +87,4 @@ Install:
 
   Playwright will install Chromium on first run if needed.
 
-v0.1.2
+v0.1.3

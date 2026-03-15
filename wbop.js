@@ -4,8 +4,10 @@ import { resolve, join, dirname } from "path";
 import { existsSync, unlinkSync, mkdirSync, readFileSync } from "fs";
 import { createServer, connect } from "net";
 import { fileURLToPath } from "url";
+import { execFileSync } from "child_process";
+import { buildMessage, parseWxH, defaultWindowSizeForScreen, launchArgsForWindowSize } from "./wbop-core.js";
 
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 const PKG_DIR = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 
@@ -59,54 +61,56 @@ if (args[0] !== "serve") {
   });
   setTimeout(() => { console.error("wbop: timeout (60s)"); process.exit(1); }, 60000);
 } else {
-  await startServer();
-}
-
-// ─── Build JSON message from CLI args ─────────────────────────────────────────
-
-function buildMessage(args) {
-  if (args[0].startsWith("{")) return JSON.parse(args[0]);
-
-  const cmd = args[0];
-  switch (cmd) {
-    case "goto":       return { cmd, url: args[1], wait: num(args[2]) };
-    case "screenshot": return { cmd, name: args[1], fullPage: args[2] !== "viewport" };
-    case "click":      return { cmd, selector: args[1], wait: num(args[2]) };
-    case "type":       return { cmd, selector: args[1], text: args.slice(2).join(" ") };
-    case "press":      return { cmd, key: args[1] };
-    case "download":   return { cmd, selector: args[1] };
-    case "wait":       return { cmd, selector: args[1], timeout: num(args[2]) || 30000 };
-    case "eval":       return { cmd, js: args.slice(1).join(" ") };
-    case "text":       return { cmd, selector: args[1] || "body" };
-    case "html":       return { cmd, selector: args[1] || "body", maxLength: num(args[2]) };
-    case "url":        return { cmd };
-    case "tabs":       return { cmd };
-    case "tab":        return { cmd, index: parseInt(args[1], 10) };
-    case "close":      return { cmd };
-    default:           return { cmd, ...parseExtra(args.slice(1)) };
-  }
-}
-
-function num(s) { const n = parseInt(s, 10); return isNaN(n) ? undefined : n; }
-
-function parseExtra(pairs) {
-  const obj = {};
-  for (let i = 0; i < pairs.length; i += 2) {
-    if (pairs[i + 1] !== undefined) obj[pairs[i]] = pairs[i + 1];
-  }
-  return obj;
+  await startServer(args[1]);
 }
 
 // ─── Server mode ──────────────────────────────────────────────────────────────
 
-async function startServer() {
+function detectScreenSize() {
+  try {
+    if (process.platform === "darwin") {
+      const out = execFileSync("osascript", ["-e", 'tell application "Finder" to get bounds of window of desktop'], { encoding: "utf8" }).trim();
+      const parts = out.split(/\s*,\s*/).map(n => parseInt(n, 10));
+      if (parts.length === 4 && parts.every(n => !isNaN(n))) {
+        return { width: parts[2] - parts[0], height: parts[3] - parts[1] };
+      }
+    }
+
+    if (process.platform === "linux") {
+      const out = execFileSync("sh", ["-lc", "xrandr 2>/dev/null | awk '/\*/ {print $1; exit}'"], { encoding: "utf8" }).trim();
+      const size = parseWxH(out);
+      if (size) return size;
+    }
+
+    if (process.platform === "win32") {
+      const out = execFileSync("powershell", ["-NoProfile", "-Command", "Add-Type -AssemblyName System.Windows.Forms; Write-Output ([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width.ToString() + 'x' + [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height.ToString())"], { encoding: "utf8" }).trim();
+      const size = parseWxH(out);
+      if (size) return size;
+    }
+  } catch {
+    // Fall through to default below.
+  }
+
+  return { width: 1440, height: 900 };
+}
+
+function defaultWindowSize() {
+  return defaultWindowSizeForScreen(detectScreenSize());
+}
+
+async function startServer(windowSizeArg) {
   const { chromium } = await import("playwright");
 
   const HOME = join(process.env.HOME || process.env.USERPROFILE || ".", ".wbop");
   const BROWSER_DATA = resolve(process.env.WBOP_BROWSER_DATA || join(HOME, "data"));
   const DOWNLOADS = resolve(process.env.WBOP_DOWNLOADS || join(HOME, "downloads"));
   const SCREENSHOTS = resolve(process.env.WBOP_SCREENSHOTS || join(HOME, "screenshots"));
-  const [VW, VH] = (process.env.WBOP_VIEWPORT || "1280x900").split("x").map(Number);
+  const windowSize = windowSizeArg ? parseWxH(windowSizeArg) : defaultWindowSize();
+
+  if (windowSizeArg && !windowSize) {
+    console.error(`wbop: invalid window size \`${windowSizeArg}\` (expected WxH, e.g. 1440x900)`);
+    process.exit(1);
+  }
 
   for (const dir of [BROWSER_DATA, DOWNLOADS, SCREENSHOTS]) {
     mkdirSync(dir, { recursive: true });
@@ -127,10 +131,10 @@ async function startServer() {
 
   const context = await chromium.launchPersistentContext(BROWSER_DATA, {
     headless: false,
-    viewport: { width: VW, height: VH },
+    viewport: null,
     acceptDownloads: true,
     downloadsPath: DOWNLOADS,
-    args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+    args: launchArgsForWindowSize(windowSize),
   });
 
   let page = context.pages()[0] || await context.newPage();
@@ -141,7 +145,8 @@ async function startServer() {
   console.log(`  profile:     ${BROWSER_DATA}`);
   console.log(`  downloads:   ${DOWNLOADS}`);
   console.log(`  screenshots: ${SCREENSHOTS}`);
-  console.log(`  viewport:    ${VW}x${VH}`);
+  console.log(`  window:      ${windowSize.width}x${windowSize.height}`);
+  console.log(`  viewport:    window-sized (viewport: null)`);
 
   async function handle(parsed) {
     const { cmd } = parsed;
