@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
 import { buildMessage, parseWxH, defaultWindowSizeForScreen, launchArgsForWindowSize } from "./wbop-core.js";
 
-const VERSION = "0.1.4";
+const VERSION = "0.1.6";
 const PKG_DIR = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 
