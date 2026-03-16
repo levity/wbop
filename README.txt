@@ -1,10 +1,10 @@
 wbop (web operator): control a long-lived browser from the CLI.
 
 Usage:
-  wbop serve [WxH]         Start the browser (runs until killed)
-  wbop <command> [args]    Send a command to the running browser
-  wbop --help              Show this help
-  wbop --help-all          Show extended help with examples
+  wbop serve [WxH] [--vnc-password PW]    Start the browser
+  wbop <command> [args]                   Send a command
+  wbop --help                             Show this help
+  wbop --help-all                         Extended help
 
 Commands:
   goto <url> [wait_ms]           Navigate to URL
@@ -46,11 +46,35 @@ How it works:
   The browser stays open between commands. Log into sites by hand, then
   automate from there. It's a normal browser. wbop just gives it a CLI.
 
+Headless environments:
+
+  If no X display is detected (headless VM, SSH session, CI), `wbop serve`
+  automatically spins up a virtual display stack:
+
+    - Xvfb (virtual framebuffer) at the requested resolution
+    - i3 window manager (borderless, no bar — maximises browser space)
+    - x11vnc on port 5900 for remote viewing
+
+  If xvfb, i3-wm, or x11vnc are not installed, wbop asks for permission
+  and installs them via apt-get.
+
+  Use --vnc-password to require a password for VNC connections:
+
+    wbop serve 1440x900 --vnc-password secret
+
+  Connect with any VNC client:
+
+    vncviewer hostname:5900
+
+  The entire display stack is torn down when wbop exits (close command,
+  SIGINT, SIGTERM).
+
 Quick start:
 
   Terminal 1 — start the browser:
-    wbop serve
-    wbop serve 1440x900
+    wbop serve                              # auto-detect screen size
+    wbop serve 1440x900                     # explicit size
+    wbop serve 1440x900 --vnc-password pw   # with VNC password
 
   Terminal 2 — send commands:
     wbop goto https://example.com
@@ -87,4 +111,4 @@ Install:
 
   Playwright will install Chromium on first run if needed.
 
-v0.1.6
+v0.2.0

@@ -54,3 +54,26 @@ export function launchArgsForWindowSize(windowSize) {
     `--window-size=${windowSize.width},${windowSize.height}`,
   ];
 }
+
+/**
+ * Parse the arguments after `wbop serve`.
+ *
+ *   wbop serve [WxH] [--vnc-password PW]
+ *
+ * @param {string[]} args  Everything after "serve"
+ * @returns {{ windowSize: string|null, vncPassword: string|null }}
+ */
+export function parseServeArgs(args) {
+  let windowSize = null;
+  let vncPassword = null;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--vnc-password" && i + 1 < args.length) {
+      vncPassword = args[++i];
+    } else if (!windowSize && !args[i].startsWith("-")) {
+      windowSize = args[i];
+    }
+  }
+
+  return { windowSize, vncPassword };
+}

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildMessage, parseWxH, defaultWindowSizeForScreen, launchArgsForWindowSize } from "../wbop-core.js";
+import { buildMessage, parseWxH, defaultWindowSizeForScreen, launchArgsForWindowSize, parseServeArgs } from "../wbop-core.js";
 
 test("parseWxH parses valid sizes", () => {
   assert.deepEqual(parseWxH("1440x900"), { width: 1440, height: 900 });
@@ -65,4 +65,30 @@ test("buildMessage parses raw json and fallback key/value args", () => {
     foo: "bar",
     baz: "qux",
   });
+});
+
+// ─── parseServeArgs ───────────────────────────────────────────────────────────
+
+test("parseServeArgs: no args", () => {
+  assert.deepEqual(parseServeArgs([]), { windowSize: null, vncPassword: null });
+});
+
+test("parseServeArgs: window size only", () => {
+  assert.deepEqual(parseServeArgs(["1440x900"]), { windowSize: "1440x900", vncPassword: null });
+});
+
+test("parseServeArgs: vnc password only", () => {
+  assert.deepEqual(parseServeArgs(["--vnc-password", "secret"]), { windowSize: null, vncPassword: "secret" });
+});
+
+test("parseServeArgs: window size + vnc password", () => {
+  assert.deepEqual(parseServeArgs(["1440x900", "--vnc-password", "pw"]), { windowSize: "1440x900", vncPassword: "pw" });
+});
+
+test("parseServeArgs: vnc password before window size", () => {
+  assert.deepEqual(parseServeArgs(["--vnc-password", "pw", "1440x900"]), { windowSize: "1440x900", vncPassword: "pw" });
+});
+
+test("parseServeArgs: ignores unknown flags", () => {
+  assert.deepEqual(parseServeArgs(["--unknown", "1440x900"]), { windowSize: "1440x900", vncPassword: null });
 });

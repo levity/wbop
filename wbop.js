@@ -5,9 +5,10 @@ import { existsSync, unlinkSync, mkdirSync, readFileSync } from "fs";
 import { createServer, connect } from "net";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
-import { buildMessage, parseWxH, defaultWindowSizeForScreen, launchArgsForWindowSize } from "./wbop-core.js";
+import { buildMessage, parseWxH, defaultWindowSizeForScreen, launchArgsForWindowSize, parseServeArgs } from "./wbop-core.js";
+import { ensureDisplay } from "./wbop-display.js";
 
-const VERSION = "0.1.6";
+const VERSION = "0.2.0";
 const PKG_DIR = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 
@@ -61,7 +62,7 @@ if (args[0] !== "serve") {
   });
   setTimeout(() => { console.error("wbop: timeout (60s)"); process.exit(1); }, 60000);
 } else {
-  await startServer(args[1]);
+  await startServer(args.slice(1));
 }
 
 // ─── Server mode ──────────────────────────────────────────────────────────────
@@ -98,24 +99,22 @@ function defaultWindowSize() {
   return defaultWindowSizeForScreen(detectScreenSize());
 }
 
-async function startServer(windowSizeArg) {
+async function startServer(serveArgs) {
   const { chromium } = await import("playwright");
 
+  const parsed = parseServeArgs(serveArgs);
   const HOME = join(process.env.HOME || process.env.USERPROFILE || ".", ".wbop");
   const BROWSER_DATA = resolve(process.env.WBOP_BROWSER_DATA || join(HOME, "data"));
   const DOWNLOADS = resolve(process.env.WBOP_DOWNLOADS || join(HOME, "downloads"));
   const SCREENSHOTS = resolve(process.env.WBOP_SCREENSHOTS || join(HOME, "screenshots"));
-  const windowSize = windowSizeArg ? parseWxH(windowSizeArg) : defaultWindowSize();
+  const windowSize = parsed.windowSize ? parseWxH(parsed.windowSize) : defaultWindowSize();
 
-  if (windowSizeArg && !windowSize) {
-    console.error(`wbop: invalid window size \`${windowSizeArg}\` (expected WxH, e.g. 1440x900)`);
+  if (parsed.windowSize && !windowSize) {
+    console.error(`wbop: invalid window size \`${parsed.windowSize}\` (expected WxH, e.g. 1440x900)`);
     process.exit(1);
   }
 
-  for (const dir of [BROWSER_DATA, DOWNLOADS, SCREENSHOTS]) {
-    mkdirSync(dir, { recursive: true });
-  }
-
+  // Check for an existing wbop instance before doing anything heavy
   if (existsSync(SOCK)) {
     const alive = await new Promise((res) => {
       const c = connect(SOCK);
@@ -128,6 +127,13 @@ async function startServer(windowSizeArg) {
     }
     unlinkSync(SOCK);
   }
+
+  for (const dir of [BROWSER_DATA, DOWNLOADS, SCREENSHOTS]) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  // Ensure we have a working X display (starts Xvfb + i3 + VNC if needed)
+  const display = await ensureDisplay(windowSize, parsed.vncPassword);
 
   const context = await chromium.launchPersistentContext(BROWSER_DATA, {
     headless: false,
@@ -147,6 +153,10 @@ async function startServer(windowSizeArg) {
   console.log(`  screenshots: ${SCREENSHOTS}`);
   console.log(`  window:      ${windowSize.width}x${windowSize.height}`);
   console.log(`  viewport:    window-sized (viewport: null)`);
+  console.log(`  display:     ${display.display}${display.managed ? " (managed — Xvfb + i3)" : ""}`);
+  if (display.vncPort) {
+    console.log(`  vnc:         :${display.vncPort}${parsed.vncPassword ? " (password protected)" : " (no password)"}`);
+  }
 
   async function handle(parsed) {
     const { cmd } = parsed;
@@ -230,6 +240,7 @@ async function startServer(windowSizeArg) {
           await context.close();
           server.close();
           try { unlinkSync(SOCK); } catch {}
+          display.cleanup();
           process.exit(0);
         }, 100);
         return { ok: true, msg: "closing" };
@@ -267,6 +278,7 @@ async function startServer(windowSizeArg) {
     context.close().catch(() => {});
     server.close();
     try { unlinkSync(SOCK); } catch {}
+    display.cleanup();
     process.exit(0);
   }
   process.on("SIGINT", cleanup);
