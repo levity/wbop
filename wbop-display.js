@@ -21,6 +21,9 @@ const REQUIRED_DEPS = [
 ];
 
 export function hasWorkingDisplay() {
+  // macOS has native display support (Quartz/CoreGraphics), no X11 needed
+  if (process.platform === "darwin") return true;
+
   const d = process.env.DISPLAY;
   if (!d) return false;
   const num = d.replace(/^:/, "").replace(/\..*/, "");

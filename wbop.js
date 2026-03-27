@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { resolve, join, dirname } from "path";
 import { existsSync, unlinkSync, mkdirSync, readFileSync } from "fs";
 import { createServer, connect } from "net";
@@ -8,7 +6,7 @@ import { execFileSync } from "child_process";
 import { buildMessage, parseWxH, defaultWindowSizeForScreen, launchArgsForWindowSize, parseServeArgs } from "./wbop-core.js";
 import { ensureDisplay } from "./wbop-display.js";
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 const PKG_DIR = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 
