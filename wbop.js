@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { resolve, join, dirname } from "path";
 import { existsSync, unlinkSync, mkdirSync, readFileSync } from "fs";
 import { createServer, connect } from "net";
