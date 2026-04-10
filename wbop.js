@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { resolve, join, dirname } from "path";
-import { existsSync, unlinkSync, mkdirSync, readFileSync } from "fs";
+import { existsSync, unlinkSync, mkdirSync, readFileSync, renameSync } from "fs";
 import { createServer, connect } from "net";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
@@ -175,8 +175,16 @@ async function startServer(serveArgs) {
       }
       case "screenshot": {
         const name = parsed.name || `page-${Date.now()}`;
-        const file = join(SCREENSHOTS, `${name}.png`);
-        await page.screenshot({ path: file, fullPage: parsed.fullPage !== false });
+        const tmp = join(SCREENSHOTS, `.${name}-${Date.now()}.png.tmp`);
+        await page.screenshot({ path: tmp, fullPage: parsed.fullPage !== false });
+        let file = join(SCREENSHOTS, `${name}.png`);
+        if (!existsSync(file)) {
+          renameSync(tmp, file);
+        } else {
+          let n = 1;
+          do { file = join(SCREENSHOTS, `${name}-${n}.png`); n++; } while (existsSync(file));
+          renameSync(tmp, file);
+        }
         return { ok: true, file };
       }
       case "html": {

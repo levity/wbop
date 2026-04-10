@@ -8,12 +8,13 @@
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 13px;
       padding: 12px;
-      width: 200px;
+      width: 240px;
+      color: #222;
     }
     h1 {
       font-size: 14px;
       font-weight: 600;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -23,16 +24,59 @@
       height: 8px;
       border-radius: 50%;
       background: #9E9E9E;
+      flex: 0 0 auto;
     }
     .status-dot.connected { background: #4CAF50; }
-    .status { margin-bottom: 12px; color: #666; }
-    input {
+    .status-dot.reconnecting { background: #FF9800; }
+    .status {
+      margin-bottom: 10px;
+      color: #666;
+      min-height: 32px;
+      line-height: 1.25;
+    }
+    label.field {
+      display: block;
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    input[type="text"] {
       width: 100%;
       padding: 6px 8px;
       border: 1px solid #ddd;
       border-radius: 4px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       font-size: 12px;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding: 8px;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .toggle-copy {
+      font-size: 12px;
+      line-height: 1.25;
+    }
+    .toggle-copy strong {
+      display: block;
+      font-size: 12px;
+      color: #222;
+      margin-bottom: 2px;
+    }
+    .toggle-copy span {
+      color: #666;
+      font-size: 11px;
+    }
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
     }
     button {
       width: 100%;
@@ -46,7 +90,13 @@
     button.connect { background: #4CAF50; color: white; }
     button.disconnect { background: #f44336; color: white; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .error { color: #f44336; font-size: 12px; margin-top: 8px; }
+    .error {
+      color: #f44336;
+      font-size: 11px;
+      margin-top: 8px;
+      min-height: 14px;
+      line-height: 1.25;
+    }
   </style>
 </head>
 <body>
@@ -55,7 +105,18 @@
     <span class="status-dot" id="statusDot"></span>
   </h1>
   <div class="status" id="status">Not connected</div>
+
+  <label class="field" for="url">Relay URL</label>
   <input type="text" id="url" value="ws://localhost:8765" placeholder="ws://localhost:8765">
+
+  <label class="toggle-row" for="stayConnected">
+    <div class="toggle-copy">
+      <strong>Stay connected</strong>
+      <span>Retry in the background and notify if it stays down.</span>
+    </div>
+    <input type="checkbox" id="stayConnected">
+  </label>
+
   <button id="button" class="connect">Connect</button>
   <div class="error" id="error"></div>
 

@@ -42,6 +42,8 @@ Load `sidekick/.output/chrome-mv3/` as an unpacked extension in Chrome.
 
 Click the extension icon, enter the relay URL (default: `ws://localhost:8765`), and click Connect.
 
+You can also enable **Stay connected** in the popup. When enabled, the extension will retry in the background with exponential backoff and show a compact reconnect status in the popup. If it stays disconnected for several minutes, it will raise a browser notification.
+
 ### 4. Run commands
 
 ```bash
@@ -96,9 +98,9 @@ Responses:
 sidekick/
 ├── sidekick.js              # CLI (serve, eval, tabs, screenshot)
 ├── entrypoints/
-│   ├── background.ts        # WebSocket client, message routing
+│   ├── background.ts        # WebSocket client, reconnect logic, notifications
 │   ├── content.ts           # JS evaluation in page context
-│   └── popup/               # Connect/disconnect UI
+│   └── popup/               # Connect/disconnect + stay-connected UI
 ├── utils/
 │   └── protocol.ts          # Type definitions
 └── wxt.config.ts            # Extension config

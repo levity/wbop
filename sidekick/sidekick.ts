@@ -14,6 +14,65 @@ import { WebSocketServer, WebSocket } from 'ws';
 
 const VERSION = '0.1.0';
 const DEFAULT_PORT = 8765;
+const PREVIEW_LIMIT = 120;
+const RESPONSE_PREVIEW_LIMIT = 140;
+
+function timestamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function singleLine(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function truncate(value: string, limit: number) {
+  const clean = singleLine(value);
+  return clean.length <= limit ? clean : `${clean.slice(0, Math.max(0, limit - 1))}…`;
+}
+
+function preview(value: unknown, limit: number) {
+  try {
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    return truncate(text ?? String(value), limit);
+  } catch {
+    return truncate(String(value), limit);
+  }
+}
+
+function responseSummary(response: any) {
+  const body = response?.error ?? response?.result ?? response?.tabs ?? response?.image ?? response;
+  const serialized = (() => {
+    try {
+      return typeof body === 'string' ? body : JSON.stringify(body);
+    } catch {
+      return String(body);
+    }
+  })();
+  return `chars=${serialized.length} preview=${preview(serialized, RESPONSE_PREVIEW_LIMIT)}`;
+}
+
+function logLine(direction: string, message: string) {
+  console.log(`${timestamp()} ${direction} ${message}`);
+}
+
+function logInfo(message: string) {
+  console.log(`${timestamp()} ${message}`);
+}
+
+function describeRequest(request: any) {
+  switch (request?.type) {
+    case 'eval':
+      return `id=${request.__id ?? '?'} type=eval${request.tabId !== undefined ? ` tab=${request.tabId}` : ''} code=${preview(request.code, PREVIEW_LIMIT)}`;
+    case 'tabs':
+      return `id=${request.__id ?? '?'} type=tabs`;
+    case 'screenshot':
+      return `id=${request.__id ?? '?'} type=screenshot${request.tabId !== undefined ? ` tab=${request.tabId}` : ''}`;
+    default:
+      return `id=${request?.__id ?? '?'} type=${request?.type ?? 'unknown'} payload=${preview(request, PREVIEW_LIMIT)}`;
+  }
+}
 
 // ============================================================================
 // Serve Command — Relay between extension and CLI clients
@@ -21,18 +80,18 @@ const DEFAULT_PORT = 8765;
 
 async function serve(port: number) {
   let extension: WebSocket | null = null;
-  // Map: requestId -> { resolve, timeout, clientWs }
-  const pendingRequests = new Map<string, { resolve: Function; timeout: ReturnType<typeof setTimeout>; clientWs: WebSocket }>();
+  const pendingRequests = new Map<string, { timeout: ReturnType<typeof setTimeout>; clientWs: WebSocket; request: any }>();
 
   const server = new WebSocketServer({ port });
 
   server.on('connection', (ws) => {
-    // First connection = extension, subsequent = CLI clients
+    const peer = !extension ? 'extension' : 'client';
+
     if (!extension) {
       extension = ws;
-      console.log('[relay] Extension connected');
+      logInfo('extension connected');
     } else {
-      console.log('[relay] CLI client connected');
+      logInfo('cli client connected');
     }
 
     ws.on('message', (data) => {
@@ -40,76 +99,82 @@ async function serve(port: number) {
         const msg = JSON.parse(data.toString());
 
         if (msg.response) {
-          // Response from extension — forward back to the CLI client that asked
           const pending = pendingRequests.get(msg.id);
           if (pending) {
-            console.log('[relay] ← response for', msg.id, '→ forwarding to CLI');
             clearTimeout(pending.timeout);
             pendingRequests.delete(msg.id);
+            logLine('←', `id=${msg.id} ${msg.response?.success === false ? 'error' : 'ok'} ${responseSummary(msg.response)}`);
 
-            // Send the response back to the CLI client's websocket
             if (pending.clientWs.readyState === WebSocket.OPEN) {
               pending.clientWs.send(JSON.stringify(msg));
-              console.log('[relay] → sent response to CLI');
             } else {
-              console.log('[relay] CLI client already disconnected');
+              logInfo(`response dropped for id=${msg.id}; cli client already disconnected`);
             }
           } else {
-            console.log('[relay] ← response for unknown request', msg.id);
+            logInfo(`unexpected response id=${msg.id} ${responseSummary(msg.response)}`);
           }
-        } else if (msg.request) {
-          // Request from a CLI client — forward to extension, remember which client
+          return;
+        }
+
+        if (msg.request) {
+          const request = { ...msg.request, __id: msg.id };
+
+          if (peer !== 'client') {
+            logInfo(`unexpected request from extension id=${msg.id} type=${msg.request.type}`);
+            return;
+          }
+
           if (!extension || extension.readyState !== WebSocket.OPEN) {
-            console.log('[relay] ← request but no extension connected');
             const errorResponse = { id: msg.id, response: { success: false, error: 'No extension connected' } };
+            logLine('←', `id=${msg.id} error chars=22 preview=No extension connected`);
             ws.send(JSON.stringify(errorResponse));
             return;
           }
-          console.log('[relay] ← request', msg.id, msg.request.type, '→ forwarding to extension');
+
+          logLine('→', describeRequest(request));
 
           const timeout = setTimeout(() => {
             pendingRequests.delete(msg.id);
             const errorResponse = { id: msg.id, response: { success: false, error: 'Request timeout' } };
+            logLine('←', `id=${msg.id} error chars=15 preview=Request timeout`);
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify(errorResponse));
             }
           }, 10000);
 
-          // Track the CLI client so we can send the response back
-          pendingRequests.set(msg.id, { resolve: () => {}, timeout, clientWs: ws });
-
+          pendingRequests.set(msg.id, { timeout, clientWs: ws, request });
           extension.send(JSON.stringify(msg));
         }
       } catch (error) {
-        console.error('[relay] Error parsing message:', error);
+        logInfo(`parse error ${preview(String(error), PREVIEW_LIMIT)}`);
       }
     });
 
     ws.on('close', () => {
       if (ws === extension) {
-        console.log('[relay] Extension disconnected');
+        logInfo('extension disconnected');
         extension = null;
-        // Fail all pending requests
         for (const [id, pending] of pendingRequests) {
           clearTimeout(pending.timeout);
           const errorResponse = { id, response: { success: false, error: 'Extension disconnected' } };
+          logLine('←', `id=${id} error chars=22 preview=Extension disconnected`);
           if (pending.clientWs.readyState === WebSocket.OPEN) {
             pending.clientWs.send(JSON.stringify(errorResponse));
           }
         }
         pendingRequests.clear();
       } else {
-        console.log('[relay] CLI client disconnected');
+        logInfo('cli client disconnected');
       }
     });
 
     ws.on('error', (err) => {
-      console.error('[relay] WebSocket error:', err.message);
+      logInfo(`websocket error ${preview(err.message, PREVIEW_LIMIT)}`);
     });
   });
 
-  console.log(`[sidekick] Relay listening on ws://localhost:${port}`);
-  console.log('[sidekick] Waiting for extension to connect...');
+  logInfo(`relay listening on ws://localhost:${port}`);
+  logInfo('waiting for extension to connect');
 }
 
 // ============================================================================

@@ -13,6 +13,7 @@ export default defineConfig({
       'tabs',
       'scripting',
       'storage',
+      'notifications',
     ],
     host_permissions: [
       '<all_urls>',
