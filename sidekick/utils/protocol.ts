@@ -1,7 +1,5 @@
 /**
  * Sidekick Protocol
- *
- * Minimal: send JS code, get result back.
  */
 
 export interface EvalRequest {
@@ -19,7 +17,26 @@ export interface ScreenshotRequest {
   tabId?: number;
 }
 
-export type Request = EvalRequest | TabsRequest | ScreenshotRequest;
+export interface ScratchpadWriteRequest {
+  type: 'scratchpadWrite';
+  from: 'browser' | 'agent';
+  body: string;
+}
+
+export interface ScratchpadReadRequest {
+  type: 'scratchpadRead';
+  from?: 'browser' | 'agent';
+  afterId?: string;
+}
+
+export type Request = EvalRequest | TabsRequest | ScreenshotRequest | ScratchpadWriteRequest | ScratchpadReadRequest;
+
+export interface ScratchpadEntry {
+  id: string;
+  from: 'browser' | 'agent';
+  body: string;
+  ts: string;
+}
 
 export interface EvalResponse {
   type: 'eval';
@@ -42,15 +59,28 @@ export interface ScreenshotResponse {
   error?: string;
 }
 
-export type Response = EvalResponse | TabsResponse | ScreenshotResponse;
+export interface ScratchpadWriteResponse {
+  type: 'scratchpadWrite';
+  success: boolean;
+  entry?: ScratchpadEntry;
+  error?: string;
+}
 
-// Relay -> Extension message (forwarded from CLI)
+export interface ScratchpadReadResponse {
+  type: 'scratchpadRead';
+  success: boolean;
+  found?: boolean;
+  entry?: ScratchpadEntry;
+  error?: string;
+}
+
+export type Response = EvalResponse | TabsResponse | ScreenshotResponse | ScratchpadWriteResponse | ScratchpadReadResponse;
+
 export interface RelayMessage {
   id: string;
   request: Request;
 }
 
-// Extension -> Relay message (response to CLI)
 export interface RelayResponse {
   id: string;
   response: Response;

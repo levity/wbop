@@ -1,56 +1,60 @@
-import type { EvalResponse } from '../utils/protocol';
+/**
+ * Content script — bridge between page global (window.sidekick) and the
+ * background service worker.
+ *
+ * Page → content script: window.postMessage with __sidekickReq marker
+ * Content script → page: window.postMessage with __sidekickRes marker
+ * Background → content script: browser.runtime.onMessage (for pushes)
+ */
+
+const REQ = '__sidekickReq';
+const RES = '__sidekickRes';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_idle',
 
   main() {
-    browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-      const { code, id } = message as { code: string; id: string };
+    // Ask background to inject the page-global helper
+    void browser.runtime.sendMessage({ type: 'injectPageGlobal' }).catch(() => {});
 
-      try {
-        const result = eval(code);
-        const response: EvalResponse = {
-          type: 'eval',
-          success: true,
-          result: serializeResult(result),
-        };
-        sendResponse({ id, response });
-      } catch (error) {
-        const response: EvalResponse = {
-          type: 'eval',
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-        sendResponse({ id, response });
+    // Relay page requests to background
+    window.addEventListener('message', (event) => {
+      if (event.source !== window) return;
+      const msg = event.data;
+      if (!msg || msg[REQ] !== true) return;
+      void relayToBackground(msg);
+    });
+
+    // Receive pushes from background (agent writes)
+    browser.runtime.onMessage.addListener((message) => {
+      if (message?.type === 'scratchpadPush') {
+        window.postMessage({
+          [RES]: true,
+          push: true,
+          body: message.body,
+        }, '*');
       }
-
-      return true; // async response
     });
   },
 });
 
-// JSON-serialize result, handling non-serializable values
-function serializeResult(value: any): any {
-  if (value === undefined) return { __undefined: true };
-  if (value === null) return null;
-  if (typeof value === 'function') return { __function: true };
-  if (typeof value === 'symbol') return { __symbol: value.toString() };
-  if (value instanceof Element) {
-    return {
-      __element: true,
-      tag: value.tagName.toLowerCase(),
-      text: value.textContent?.slice(0, 200),
-    };
-  }
-  if (value instanceof Error) {
-    return { __error: true, message: value.message, name: value.name };
-  }
+async function relayToBackground(msg: any) {
+  const rid = msg.rid as string;
   try {
-    // Test if it's JSON-serializable
-    JSON.stringify(value);
-    return value;
-  } catch {
-    return { __unserializable: true, toString: String(value) };
+    const result = await browser.runtime.sendMessage({
+      type: msg.command,
+      from: msg.from,
+      body: msg.body,
+      afterId: msg.afterId,
+    });
+    window.postMessage({ [RES]: true, rid, ok: true, result }, '*');
+  } catch (error) {
+    window.postMessage({
+      [RES]: true,
+      rid,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }, '*');
   }
 }
