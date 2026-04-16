@@ -186,8 +186,12 @@ async function serve(port: number) {
 
   server.on('connection', (ws) => {
     connected.add(ws);
-    const peerId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    logInfo(`peer connected id=${peerId} (now ${connected.size} peer${connected.size === 1 ? '' : 's'})`);
+    let isClient = true;
+    let settled = false;
+
+    // Log persistent peers (extension) but not transient CLI connections.
+    // Settle after 2s — if still connected, it's a persistent peer.
+    const settleTimer = setTimeout(() => { isClient = false; settled = true; logInfo('peer connected'); }, 2000);
 
     ws.on('message', (data) => {
       try {
@@ -250,7 +254,10 @@ async function serve(port: number) {
 
     ws.on('close', () => {
       connected.delete(ws);
-      logInfo(`peer disconnected id=${peerId} (now ${connected.size} peer${connected.size === 1 ? '' : 's'})`);
+      clearTimeout(settleTimer);
+      if (!isClient) {
+        logInfo('peer disconnected');
+      }
       failPending(ws, 'Other peer disconnected');
     });
 

@@ -12,7 +12,10 @@ const STORAGE_KEYS = {
   relayUrl: 'relayUrl',
   stayConnected: 'stayConnected',
 } as const;
-const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_BASE_DELAY_MS = 100;
+const RECONNECT_FAST_STEPS = 4;
+const RECONNECT_FAST_DELAY_MS = 250;
+const RECONNECT_SLOW_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 const RECONNECT_STATUS_THRESHOLD_MS = 15_000;
 const RECONNECT_NOTIFY_THRESHOLD_MS = 5 * 60_000;
@@ -549,7 +552,13 @@ export default defineBackground(() => {
     }
     if (reconnectTimer) return;
     reconnectAttempts += 1;
-    const delay = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** (reconnectAttempts - 1), RECONNECT_MAX_DELAY_MS);
+    let delay: number;
+    if (reconnectAttempts <= RECONNECT_FAST_STEPS) {
+      delay = RECONNECT_FAST_DELAY_MS;
+    } else {
+      const slowAttempt = reconnectAttempts - RECONNECT_FAST_STEPS;
+      delay = Math.min(RECONNECT_SLOW_BASE_DELAY_MS * 2 ** (slowAttempt - 1), RECONNECT_MAX_DELAY_MS);
+    }
     lastError = `${reason}; retrying in ${Math.round(delay / 1000)}s`;
     ensureStatusBroadcast(); updateBadge(); broadcastStatus();
     reconnectTimer = setTimeout(() => {
