@@ -176,7 +176,7 @@ async function startServer(serveArgs) {
       case "screenshot": {
         const name = parsed.name || `page-${Date.now()}`;
         const tmp = join(SCREENSHOTS, `.${name}-${Date.now()}.png.tmp`);
-        await page.screenshot({ path: tmp, fullPage: parsed.fullPage !== false });
+        await page.screenshot({ path: tmp, type: "png", fullPage: parsed.fullPage !== false });
         let file = join(SCREENSHOTS, `${name}.png`);
         if (!existsSync(file)) {
           renameSync(tmp, file);
