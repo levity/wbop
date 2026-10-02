@@ -51,7 +51,8 @@ if (args[0] !== "serve") {
   let buf = "";
   sock.on("connect", () => sock.write(JSON.stringify(msg) + "\n"));
   sock.on("data", (d) => { buf += d; });
-  sock.on("end", () => { process.stdout.write(buf); process.exit(0); });
+  // Exit only after stdout drains: when piped, writes are async and exiting early truncates large replies.
+  sock.on("end", () => process.stdout.write(buf, () => process.exit(0)));
   sock.on("error", (e) => {
     if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
       console.error("wbop: not running. Start it with: wbop serve");
