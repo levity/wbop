@@ -111,4 +111,4 @@ Install:
 
   Playwright will install Chromium on first run if needed.
 
-v0.2.2
+v0.2.3
