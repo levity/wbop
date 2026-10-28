@@ -54,6 +54,16 @@ test("buildMessage parses common commands", () => {
   });
 });
 
+test("buildMessage parses form commands", () => {
+  assert.deepEqual(buildMessage(["check", "#agree"]), { cmd: "check", selector: "#agree" });
+  assert.deepEqual(buildMessage(["select", "#country", "United States"]), {
+    cmd: "select",
+    selector: "#country",
+    value: "United States",
+  });
+  assert.deepEqual(buildMessage(["fields"]), { cmd: "fields", selector: "body" });
+});
+
 test("buildMessage parses raw json and fallback key/value args", () => {
   assert.deepEqual(buildMessage(['{"cmd":"eval","js":"1+1"}']), {
     cmd: "eval",

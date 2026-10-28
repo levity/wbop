@@ -8,7 +8,7 @@ import { execFileSync } from "child_process";
 import { buildMessage, parseWxH, defaultWindowSizeForScreen, launchArgsForWindowSize, parseServeArgs } from "./wbop-core.js";
 import { ensureDisplay } from "./wbop-display.js";
 
-const VERSION = "0.2.3";
+const VERSION = "0.3.0";
 const PKG_DIR = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 
@@ -52,7 +52,12 @@ if (args[0] !== "serve") {
   sock.on("connect", () => sock.write(JSON.stringify(msg) + "\n"));
   sock.on("data", (d) => { buf += d; });
   // Exit only after stdout drains: when piped, writes are async and exiting early truncates large replies.
-  sock.on("end", () => process.stdout.write(buf, () => process.exit(0)));
+  // Exit 1 on {"ok":false} so shell `&&` chains stop at the first failed command.
+  sock.on("end", () => {
+    let code = 0;
+    try { if (JSON.parse(buf).ok === false) code = 1; } catch {}
+    process.stdout.write(buf, () => process.exit(code));
+  });
   sock.on("error", (e) => {
     if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
       console.error("wbop: not running. Start it with: wbop serve");
@@ -144,6 +149,9 @@ async function startServer(serveArgs) {
     args: launchArgsForWindowSize(windowSize),
   });
 
+  // Reads (text/html/fields) should fail fast on a missing selector instead of blocking 30s.
+  const READ_TIMEOUT = 5000;
+
   let page = context.pages()[0] || await context.newPage();
   context.on("page", (p) => { page = p; });
 
@@ -191,14 +199,40 @@ async function startServer(serveArgs) {
       case "html": {
         const sel = parsed.selector || "body";
         const maxLen = parsed.maxLength || 50000;
-        let html = await page.locator(sel).first().evaluate(e => e.outerHTML);
+        let html = await page.locator(sel).first().evaluate(e => e.outerHTML, undefined, { timeout: READ_TIMEOUT });
         const truncated = html.length > maxLen;
         if (truncated) html = html.slice(0, maxLen);
         return { ok: true, html, truncated };
       }
       case "text": {
         const sel = parsed.selector || "body";
-        return { ok: true, text: await page.locator(sel).first().innerText() };
+        return { ok: true, text: await page.locator(sel).first().innerText({ timeout: READ_TIMEOUT }) };
+      }
+      case "fields": {
+        // Summarize form controls under a selector: enough to drive a form without reading its HTML.
+        const sel = parsed.selector || "body";
+        const fields = await page.locator(sel).first().evaluate((root) => {
+          const out = [];
+          for (const e of root.querySelectorAll("input,select,textarea,button")) {
+            if (e.type === "hidden") continue;
+            const f = { tag: e.tagName.toLowerCase(), type: e.type || undefined, id: e.id || undefined, name: e.name || undefined };
+            if (e.tagName === "SELECT") {
+              f.value = e.value;
+              f.options = Array.from(e.options).map(o => o.value === o.text ? o.value : `${o.value}=${o.text}`).slice(0, 50);
+            } else if (e.type === "checkbox" || e.type === "radio") {
+              f.value = e.value; f.checked = e.checked;
+            } else if (e.tagName === "BUTTON" || e.type === "submit" || e.type === "button") {
+              f.label = (e.value || e.innerText || "").trim().slice(0, 60);
+            } else {
+              f.value = (e.value || "").slice(0, 200);
+              if (e.placeholder) f.placeholder = e.placeholder;
+            }
+            if (e.disabled) f.disabled = true;
+            out.push(f);
+          }
+          return out;
+        }, undefined, { timeout: READ_TIMEOUT });
+        return { ok: true, fields };
       }
       case "click": {
         await page.locator(parsed.selector).first().click();
@@ -208,6 +242,22 @@ async function startServer(serveArgs) {
       case "type": {
         await page.locator(parsed.selector).first().fill(parsed.text);
         return { ok: true, typed: parsed.selector };
+      }
+      case "check": {
+        await page.locator(parsed.selector).first().check();
+        return { ok: true, checked: parsed.selector };
+      }
+      case "uncheck": {
+        await page.locator(parsed.selector).first().uncheck();
+        return { ok: true, unchecked: parsed.selector };
+      }
+      case "select": {
+        // Match by value first, then by visible label.
+        const loc = page.locator(parsed.selector).first();
+        let picked;
+        try { picked = await loc.selectOption(parsed.value, { timeout: 5000 }); }
+        catch { picked = await loc.selectOption({ label: parsed.value }); }
+        return { ok: true, selected: picked };
       }
       case "press": {
         await page.keyboard.press(parsed.key);
@@ -220,6 +270,7 @@ async function startServer(serveArgs) {
         ]);
         const file = join(DOWNLOADS, dl.suggestedFilename());
         await dl.saveAs(file);
+        await dl.delete().catch(() => {}); // drop Playwright's UUID-named temp copy
         return { ok: true, file, filename: dl.suggestedFilename() };
       }
       case "wait": {

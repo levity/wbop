@@ -20,6 +20,10 @@ export function buildMessage(args) {
     case "screenshot": return { cmd, name: args[1], fullPage: args[2] !== "viewport" };
     case "click":      return { cmd, selector: args[1], wait: num(args[2]) };
     case "type":       return { cmd, selector: args[1], text: args.slice(2).join(" ") };
+    case "check":      return { cmd, selector: args[1] };
+    case "uncheck":    return { cmd, selector: args[1] };
+    case "select":     return { cmd, selector: args[1], value: args.slice(2).join(" ") };
+    case "fields":     return { cmd, selector: args[1] || "body" };
     case "press":      return { cmd, key: args[1] };
     case "download":   return { cmd, selector: args[1] };
     case "wait":       return { cmd, selector: args[1], timeout: num(args[2]) || 30000 };

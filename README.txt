@@ -11,6 +11,10 @@ Commands:
   screenshot [name] [viewport]   Save screenshot (default: full page)
   click <selector> [wait_ms]     Click an element
   type <selector> <text>         Fill an input
+  check <selector>               Tick a checkbox or radio
+  uncheck <selector>             Untick a checkbox
+  select <selector> <value>      Pick a <select> option by value or label
+  fields [selector]              List form controls (id, name, type, value)
   press <key>                    Press a keyboard key
   eval <js>                      Run JavaScript in the page
   text [selector]                Get innerText (default: body)
@@ -83,7 +87,8 @@ Quick start:
     wbop click "text=More information"
     wbop close
 
-All responses are JSON:
+All responses are JSON. A failed command prints {"ok":false,...} and
+exits 1, so `wbop click a && wbop click b` stops at the first failure.
 
   $ wbop eval "document.title"
   {"ok":true,"result":"Example Domain"}
@@ -111,4 +116,4 @@ Install:
 
   Playwright will install Chromium on first run if needed.
 
-v0.2.3
+v0.3.0
